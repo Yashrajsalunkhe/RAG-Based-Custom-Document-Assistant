@@ -13,8 +13,9 @@ from rag import RAG
 class TestRAG:
     
     @patch('rag.ChatOpenAI')
-    def test_init(self, mock_openai, vector_store):
+    def test_init(self, mock_openai, vector_store, monkeypatch):
         """Test RAG initialization."""
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
         # Create a new RAG instance
         rag = RAG(vector_store)
 
@@ -28,6 +29,29 @@ class TestRAG:
             api_key="ollama",
             temperature=0.7,
         )
+
+    @patch("rag.ChatGoogleGenerativeAI")
+    def test_init_with_gemini(self, mock_gemini, vector_store, monkeypatch):
+        """Test that Gemini can be selected through environment variables."""
+        monkeypatch.setenv("LLM_PROVIDER", "gemini")
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+        monkeypatch.setenv("GEMINI_MODEL", "gemini-test-model")
+
+        RAG(vector_store)
+
+        mock_gemini.assert_called_once_with(
+            model="gemini-test-model",
+            google_api_key="test-key",
+            temperature=0.7,
+        )
+
+    def test_invalid_provider_reports_configuration_error(self, vector_store, monkeypatch):
+        """Test that unsupported providers explain the valid choices."""
+        monkeypatch.setenv("LLM_PROVIDER", "unknown")
+
+        rag = RAG(vector_store)
+
+        assert "Use 'ollama' or 'gemini'" in rag.model_error
     
     def test_generate_answer_no_docs(self, rag_instance):
         """Test generate_answer when no documents are found."""

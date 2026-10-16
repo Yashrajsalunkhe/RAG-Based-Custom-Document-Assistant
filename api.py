@@ -3,11 +3,16 @@
 import os
 import tempfile
 import time
+import urllib.request
+import urllib.error
 from threading import Lock
 from typing import Any
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -35,12 +40,34 @@ def _get_services() -> tuple[Any, Any, Any]:
     return _vector_store, _processor, _rag
 
 
+def _check_ollama() -> dict[str, Any]:
+    """Check if Ollama is reachable and return available models."""
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    health_url = base_url.replace("/v1", "")
+    try:
+        req = urllib.request.Request(f"{health_url}/api/tags", method="GET")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            import json
+            data = json.loads(resp.read())
+            models = [m.get("name", "") for m in data.get("models", [])]
+            return {"online": True, "models": models}
+    except Exception:
+        return {"online": False, "models": []}
+
+
 def _snapshot() -> dict[str, Any]:
+    provider = os.getenv("LLM_PROVIDER", "ollama").strip().lower()
+    if provider == "gemini":
+        model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+    else:
+        provider = "ollama"
+        model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
     return {
         "documents": _documents,
         "documentCount": len(_documents),
         "chunkCount": sum(document["chunks"] for document in _documents),
-        "model": os.getenv("OLLAMA_MODEL") or os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+        "provider": provider,
+        "model": model,
         "ready": bool(_documents),
     }
 
@@ -52,7 +79,44 @@ def health() -> Any:
 
 @app.get("/api/state")
 def state() -> Any:
-    return jsonify(_snapshot())
+    snapshot = _snapshot()
+    ollama_status = _check_ollama()
+    snapshot["ollamaOnline"] = ollama_status["online"]
+    snapshot["ollamaModels"] = ollama_status["models"]
+    return jsonify(snapshot)
+
+
+@app.post("/api/config")
+def configure_model() -> Any:
+    payload = request.get_json(silent=True) or {}
+    provider = str(payload.get("provider", "")).strip().lower()
+    model = str(payload.get("model", "")).strip()
+
+    if provider not in {"ollama", "gemini"}:
+        return jsonify({"error": "Provider must be 'ollama' or 'gemini'."}), 400
+    if not model:
+        return jsonify({"error": "Choose a model before switching providers."}), 400
+
+    # Validate Ollama is reachable before switching
+    if provider == "ollama":
+        ollama_status = _check_ollama()
+        if not ollama_status["online"]:
+            return jsonify({
+                "error": "Ollama is not running. Start it with: ollama serve"
+            }), 503
+
+    if provider == "gemini" and not (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")):
+        return jsonify({
+            "error": "Gemini is not configured. Add GOOGLE_API_KEY to .env and restart the API."
+        }), 400
+
+    global _rag
+    with _state_lock:
+        os.environ["LLM_PROVIDER"] = provider
+        model_variable = "GEMINI_MODEL" if provider == "gemini" else "OLLAMA_MODEL"
+        os.environ[model_variable] = model
+        _rag = None
+    return jsonify({"state": _snapshot()})
 
 
 @app.post("/api/documents")

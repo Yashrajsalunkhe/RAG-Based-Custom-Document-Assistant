@@ -22,6 +22,7 @@ setup(
     install_requires=[
         "langchain==0.0.267",
         "langchain-openai==0.0.2",
+        "langchain-google-genai>=1.0.0,<3.0.0",
         "openai==1.3.5",
         "faiss-cpu==1.7.4",
         "sentence-transformers==2.2.2",

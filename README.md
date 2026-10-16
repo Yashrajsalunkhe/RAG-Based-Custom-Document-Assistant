@@ -27,13 +27,13 @@ AI/ML Engineer | Python Developer | Data Scientist
 - LangChain (>=0.2.5)
 - FAISS-CPU (>=1.7.4)
 - Sentence Transformers (>=2.2.2)
-- OpenAI GPT (>=1.6.1)
+- Ollama local models or Google Gemini models
 - PyPDF (>=3.17.0)
 
 ## Prerequisites
 
 - Python 3.12 or higher
-- OpenAI API key
+- Either Ollama running locally, or a Google AI Studio API key
 - Git (for version control)
 - Virtual environment (recommended)
 
@@ -65,11 +65,30 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 ```
 
-4. Set up environment variables:
-Create a `.env` file in the project root:
+4. Choose a model provider in `.env`.
+
+For a local Ollama model (the default):
 ```env
-OPENAI_API_KEY=your_api_key_here
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_MODEL=qwen2.5-coder:7b
+OPENAI_API_KEY=ollama
 ```
+
+Start Ollama and download the model before running the app:
+```bash
+ollama serve
+ollama pull qwen2.5-coder:7b
+```
+
+For a Gemini API key from Google AI Studio:
+```env
+LLM_PROVIDER=gemini
+GOOGLE_API_KEY=your_google_ai_studio_key
+GEMINI_MODEL=gemini-2.0-flash
+```
+
+Do not commit `.env` or expose either key in the frontend. Switch providers by changing `LLM_PROVIDER` and restarting the API.
 
 5. Run the application:
 ```bash
@@ -87,7 +106,7 @@ python api.py
 npm run dev
 ```
 
-Open `http://localhost:4173`. The API listens on `http://localhost:5000` by default. Upload a PDF, then ask questions to see retrieved passages, timing, and grounded answers in the RAG trace panel.
+Open `http://localhost:4173`. The API listens on `http://localhost:5000` by default. Upload a PDF, then ask questions to see retrieved passages, timing, and grounded answers in the RAG trace panel. Use the model selector beside the workspace title to switch between configured Ollama and Gemini models without re-uploading documents.
 
 The original Streamlit entrypoint remains available with `streamlit run app.py` for compatibility.
 
